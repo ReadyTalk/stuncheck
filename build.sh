@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 cp tmplt.Dockerfile Dockerfile
 
@@ -7,7 +8,9 @@ SV="stuncheck-${VERSION}"
 
 sed -i -e 's/{VERSION}/'"${VERSION}"'/g' Dockerfile
 
-docker build -t stuncheck-${VERSION}:latest .
+docker build -t stuncheck:latest .
+
+rm ./Dockerfile
 
 docker tag stuncheck:latest readytalk/stuncheck:${SV}
 docker tag stuncheck:latest readytalk/stuncheck:latest
@@ -17,7 +20,6 @@ if [[ ${TRAVIS} && "${TRAVIS_BRANCH}" == "master" && -n $DOCKER_USERNAME && -n $
   docker push readytalk/stuncheck:${SV}
   docker push readytalk/stuncheck:latest
 fi
-rm ./Dockerfile
 
 
 
