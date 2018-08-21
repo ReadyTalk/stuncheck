@@ -173,7 +173,7 @@ public class StunHTTP {
           if(clientList.putIfAbsent(ia, ssc) == null) {
             log.info("Added new StunClient:{}:{}", ia, ia.getPort());
             for(int i=0; i<cached; i+=1) {
-              PS.schedule(()->ssc.sendRequest(), i*20);
+              PS.schedule(()->ssc.sendRequest(), i*50);
             }
           }
         } catch (IOException e) {

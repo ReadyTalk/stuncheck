@@ -96,7 +96,7 @@ public class SimpleStunClient extends AbstractService {
     try {
       final StunPacket sp = new StunPacket(bb);
       RequestWrapper rw = pendingRequests.get(sp.getTxID());
-      if(rw != null) {
+      if(rw != null && !rw.rfailed) {
         long rtt = Clock.accurateForwardProgressingMillis() - rw.startTime;
         latency.add(rtt);
         completedRequests.increment();
