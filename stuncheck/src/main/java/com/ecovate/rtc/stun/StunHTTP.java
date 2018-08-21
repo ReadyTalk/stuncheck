@@ -25,6 +25,7 @@ import org.threadly.litesockets.protocols.http.shared.HTTPResponseCode;
 import org.threadly.litesockets.server.http.HTTPServer;
 import org.threadly.litesockets.server.http.HTTPServer.BodyFuture;
 import org.threadly.litesockets.server.http.HTTPServer.ResponseWriter;
+import org.threadly.util.Clock;
 import org.threadly.util.ExceptionUtils;
 
 import com.google.gson.Gson;
@@ -56,6 +57,7 @@ public class StunHTTP {
   private final int maxLatency;
   private final double failed;
   private volatile StunResponse response;
+  private volatile long lastBad = Clock.lastKnownForwardProgressingMillis()-120000;
 
   public StunHTTP(InetSocketAddress listenAddress, List<InetSocketAddress> remoteStunServers, int delay, int cached, int maxLatency, double failed) throws IOException {
     this.tse.start();
@@ -100,6 +102,7 @@ public class StunHTTP {
 
   private void handler(HTTPRequest httpRequest, ResponseWriter rw, BodyFuture bodyListener) {
     final String path = httpRequest.getHTTPRequestHeader().getRequestPath();
+    log.info("Got HTTPRequest:{}", httpRequest.toString().replaceAll("\r\n", "\\\\r\\\\n"));
     if(path.equals("/status")) {
       rw.closeOnDone();
       rw.sendHTTPResponse(SimpleResponse);
@@ -122,7 +125,7 @@ public class StunHTTP {
     for(Map.Entry<InetSocketAddress, SimpleStunClient> map: clientList.entrySet()) {
       SimpleStunClient ssc = map.getValue();
       if(ssc.currentLatencyAvg() > maxLatency || ssc.currentFailedPCT() > failed) {
-        rc = HTTPResponseCode.InternalServerError;
+        lastBad = Clock.lastKnownForwardProgressingMillis();
       }
       StunStats s = new StunStats(ssc.currentLatencyAvg(), ssc.currentFailedPCT(), ssc.currentCompletedPCT(), 
           ssc.totalLatencyAvg(), 
@@ -132,6 +135,9 @@ public class StunHTTP {
       tmp.put(map.getKey(), s);
     }
     String body = GSON.toJson(tmp);
+    if(Clock.lastKnownForwardProgressingMillis()-lastBad < 120000) {
+      rc = HTTPResponseCode.InternalServerError;
+    }
 
     response = new StunResponse(
         new HTTPResponseBuilder()
@@ -196,6 +202,8 @@ public class StunHTTP {
   }
 
   public static void main(String[] args) throws IOException, InterruptedException {
+    LoggingConfig.configureLogging();
+    
     String env_servers = System.getenv("STUN_SERVERS");
     String env_listen = System.getenv("STUN_LISTEN_ADDRESS");
     Integer env_delay = null;
@@ -240,7 +248,7 @@ public class StunHTTP {
     Argument arg_latency = parser.addArgument("--max_latency")
         .type(Integer.class)
         .required(false)
-        .setDefault(50)
+        .setDefault(100)
         .help("Delay in milliseconds before a request is considered to be timed out.");
     Argument arg_failpct = parser.addArgument("--maxFailurePCT")
         .type(Double.class)
@@ -283,10 +291,30 @@ public class StunHTTP {
 
     final String servers = res.getString("stun_servers");
     final String listen = res.getString("listen_address");
-    final int delay = res.getInt("delay");
+    int tmp_delay = res.getInt("delay");
+    if(tmp_delay < 1) {
+      tmp_delay = 1;
+    } else if(tmp_delay > 120) {
+      tmp_delay = 120;
+    }
+    final int delay = tmp_delay;
     final int latency = res.getInt("max_latency");
-    final double failures = res.getDouble("maxFailurePCT");
-    final int cached = res.getInt("cachedResults");
+    double tmp_failures = res.getDouble("maxFailurePCT");
+    if(tmp_failures < .001) {
+      tmp_failures = .001;
+    } else if (tmp_failures > 1) {
+      tmp_failures = .9999;
+    }
+    final double failures = tmp_failures;
+    int tmp_cached = res.getInt("cachedResults");
+    if(tmp_cached < 10) {
+      tmp_cached = 10;
+    } else if(tmp_cached > 10000) {
+      tmp_cached = 10000;
+    }
+    final int cached = tmp_cached;
+    
+    log.info("Starting Service with the following arguments:\nservers:{}\nlisten:{}\ndelay:{}\nlatency:{}\nfailures:{}\ncached:{}", servers, listen, delay, latency, failures, cached);
     
     final InetSocketAddress listen_addr = new InetSocketAddress(listen.split(":")[0],Integer.parseInt(listen.split(":")[1]));
     final List<InetSocketAddress> ra = new ArrayList<>();
