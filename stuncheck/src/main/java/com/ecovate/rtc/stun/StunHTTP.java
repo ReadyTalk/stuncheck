@@ -124,15 +124,17 @@ public class StunHTTP {
     HTTPResponseCode rc = HTTPResponseCode.OK;
     for(Map.Entry<InetSocketAddress, SimpleStunClient> map: clientList.entrySet()) {
       SimpleStunClient ssc = map.getValue();
-      if(ssc.currentLatencyAvg() > maxLatency || ssc.currentFailedPCT() > failed) {
-        lastBad = Clock.lastKnownForwardProgressingMillis();
+      if(ssc.totalRequests() >= 10) {
+        if(ssc.currentLatencyAvg() > maxLatency || ssc.currentFailedPCT() > failed) {
+          lastBad = Clock.lastKnownForwardProgressingMillis();
+        }
+        StunStats s = new StunStats(ssc.currentLatencyAvg(), ssc.currentFailedPCT(), ssc.currentCompletedPCT(), 
+            ssc.totalLatencyAvg(), 
+            ssc.totalFailedPCT(),
+            ssc.totalCompletedPCT(),
+            ssc.totalRequests());
+        tmp.put(map.getKey(), s);
       }
-      StunStats s = new StunStats(ssc.currentLatencyAvg(), ssc.currentFailedPCT(), ssc.currentCompletedPCT(), 
-          ssc.totalLatencyAvg(), 
-          ssc.totalFailedPCT(),
-          ssc.totalCompletedPCT(),
-          ssc.totalRequests());
-      tmp.put(map.getKey(), s);
     }
     String body = GSON.toJson(tmp);
     if(Clock.lastKnownForwardProgressingMillis()-lastBad < 120000) {
@@ -203,7 +205,7 @@ public class StunHTTP {
 
   public static void main(String[] args) throws IOException, InterruptedException {
     LoggingConfig.configureLogging();
-    
+
     String env_servers = System.getenv("STUN_SERVERS");
     String env_listen = System.getenv("STUN_LISTEN_ADDRESS");
     Integer env_delay = null;
@@ -264,7 +266,7 @@ public class StunHTTP {
       arg_servers.required(false);
       arg_servers.setDefault(env_servers);
     }
-    
+
     if(env_listen != null) {
       arg_listen.required(false);
       arg_listen.setDefault(env_listen);
@@ -313,9 +315,9 @@ public class StunHTTP {
       tmp_cached = 10000;
     }
     final int cached = tmp_cached;
-    
+
     log.info("Starting Service with the following arguments:\nservers:{}\nlisten:{}\ndelay:{}\nlatency:{}\nfailures:{}\ncached:{}", servers, listen, delay, latency, failures, cached);
-    
+
     final InetSocketAddress listen_addr = new InetSocketAddress(listen.split(":")[0],Integer.parseInt(listen.split(":")[1]));
     final List<InetSocketAddress> ra = new ArrayList<>();
     for(String server: servers.split(",")) {
