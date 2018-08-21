@@ -126,6 +126,7 @@ public class StunHTTP {
       SimpleStunClient ssc = map.getValue();
       if(ssc.totalRequests() >= 10) {
         if(ssc.currentLatencyAvg() > maxLatency || ssc.currentFailedPCT() > failed) {
+          log.info("Got failure:{}:{},{}:{}", ssc.currentLatencyAvg(), maxLatency, ssc.currentFailedPCT(), failed);
           lastBad = Clock.lastKnownForwardProgressingMillis();
         }
         StunStats s = new StunStats(ssc.currentLatencyAvg(), ssc.currentFailedPCT(), ssc.currentCompletedPCT(), 
