@@ -34,7 +34,7 @@ dependencies {
     "org.threadly:threadly:5.27",
     "org.threadly:litesockets-http-server:0.19",
     "org.threadly:litesockets:4.6",
-    "org.threadly:litesockets-stun:0.1-SNAPSHOT"
+    "org.threadly:litesockets-stun:0.1"
   )
 }
 
