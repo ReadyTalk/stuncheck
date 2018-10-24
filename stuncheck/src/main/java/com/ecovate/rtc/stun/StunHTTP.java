@@ -122,6 +122,10 @@ public class StunHTTP {
   private void updateStats() {
     HashMap<InetSocketAddress, StunStats> tmp = new HashMap<>();
     HTTPResponseCode rc = HTTPResponseCode.OK;
+   if(clientList.size() == 0) {
+      log.info("No Stun IPs found for the given servers!");
+      lastBad = Clock.lastKnownForwardProgressingMillis();
+    }
     for(Map.Entry<InetSocketAddress, SimpleStunClient> map: clientList.entrySet()) {
       SimpleStunClient ssc = map.getValue();
       if(ssc.totalRequests() >= 10) {
