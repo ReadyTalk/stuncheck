@@ -1,16 +1,11 @@
 #!/bin/bash
 set -e
 
-cp tmplt.Dockerfile Dockerfile
-
 VERSION=`cat stuncheck/VERSION`
 SV="stuncheck-${VERSION}"
 
-sed -i -e 's/{VERSION}/'"${VERSION}"'/g' Dockerfile
+docker build --build-arg VERSION=$VERSION -t stuncheck:latest .
 
-docker build -t stuncheck:latest .
-
-rm ./Dockerfile
 
 docker tag stuncheck:latest readytalk/stuncheck:${VERSION}
 docker tag stuncheck:latest readytalk/stuncheck:latest

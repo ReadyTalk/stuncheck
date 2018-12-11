@@ -8,7 +8,8 @@ RUN curl -k -L https://github.com/Yelp/dumb-init/releases/download/v1.2.1/dumb-i
 
 
 FROM openjdk:10-jre-slim
-COPY --from=builder /build/build/libs/stuncheck-{VERSION}-all.jar /
+ARG VERSION
+COPY --from=builder /build/build/libs/stuncheck-${VERSION}-all.jar /stuncheck.jar
 COPY --from=builder /tmp/dumb-init /usr/bin/dumb-init
 RUN chmod 755 /usr/bin/dumb-init
 
@@ -17,5 +18,5 @@ RUN chmod 755 /run.sh
 RUN touch /env.sh
 
 ENTRYPOINT ["/run.sh"]
-CMD ["java","-Xmx16m","-jar","stuncheck-{VERSION}-all.jar"]
+CMD ["java","-Xmx16m","-jar","stuncheck.jar"]
 
