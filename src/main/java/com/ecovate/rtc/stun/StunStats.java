@@ -1,6 +1,8 @@
 package com.ecovate.rtc.stun;
 
 class StunStats {
+
+  
   private final String current_latency;
   private final String current_failed;
   private final String current_completed;

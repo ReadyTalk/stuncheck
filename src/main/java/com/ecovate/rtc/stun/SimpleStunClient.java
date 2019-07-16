@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.LongAdder;
 
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.threadly.concurrent.future.FutureCallback;
@@ -25,6 +26,9 @@ import org.threadly.litesockets.buffers.MergedByteBuffers;
 import org.threadly.util.AbstractService;
 import org.threadly.util.Clock;
 
+import io.prometheus.client.Histogram;
+import io.prometheus.client.Histogram.Timer;
+
 import org.threadly.litesockets.protocols.stun.StunMessageType;
 import org.threadly.litesockets.protocols.stun.StunPacket;
 import org.threadly.litesockets.protocols.stun.StunPacketBuilder;
@@ -32,6 +36,14 @@ import org.threadly.litesockets.protocols.stun.StunProtocolException;
 import org.threadly.litesockets.protocols.stun.TransactionID;
 
 public class SimpleStunClient extends AbstractService {
+  
+  private static final Histogram stunRequestLatency = Histogram.build()
+      .name("stun_requests_latency_seconds")
+      .help("Stun Request latency in seconds.")
+      .exponentialBuckets(.002, 2, 12)
+      .labelNames("ip")
+      .register();
+  
   public final Logger log;
 
   private final ConcurrentHashMap<TransactionID, RequestWrapper> pendingRequests = new ConcurrentHashMap<>();
@@ -51,7 +63,13 @@ public class SimpleStunClient extends AbstractService {
   private final int currentStats;
 
 
-  public SimpleStunClient(SocketExecuter se, InetAddress bindAddress, int bindPort, InetAddress remoteAddress, int remotePort, int currentStats) throws IOException {
+  public SimpleStunClient(SocketExecuter se, 
+      InetAddress bindAddress, 
+      int bindPort, 
+      InetAddress remoteAddress, 
+      int remotePort, 
+      int currentStats) throws IOException {
+    
     this.se = se;
     this.bindAddress = bindAddress;
     this.bindPort = bindPort;
@@ -112,7 +130,7 @@ public class SimpleStunClient extends AbstractService {
     if(isRunning()) {
       try {
         StunPacket sp = new StunPacketBuilder().setType(StunMessageType.REQUEST).build();
-        RequestWrapper rw = new RequestWrapper(sp);
+        RequestWrapper rw = new RequestWrapper(sp, remoteAddress.getHostAddress());
         requests.increment();
         tList.add(sp.getTxID());
         pendingRequests.put(sp.getTxID(), rw);
@@ -237,18 +255,21 @@ public class SimpleStunClient extends AbstractService {
   private class RequestWrapper {
     private final StunPacket request;
     private final long startTime;
+    private final Timer pTimer;
     private final SettableListenableFuture<StunPacket> future = new SettableListenableFuture<StunPacket>(false);
     private final SettableListenableFuture<Boolean> watched = new SettableListenableFuture<Boolean>(false);
     private volatile long endTime = -1;
     private volatile boolean done = false;
     private volatile boolean rfailed = false;
 
-    RequestWrapper(StunPacket request) {
+    RequestWrapper(StunPacket request, String ipAdder) {
       this.request = request;
       this.startTime = Clock.accurateForwardProgressingMillis();
+      this.pTimer = stunRequestLatency.labels(ipAdder).startTimer();
     }
 
     private void complete(StunPacket sp) {
+      log.info("latency:{}", pTimer.observeDuration());
       watched.setResult(true);
       done = true;
       endTime = Clock.lastKnownForwardProgressingMillis();
@@ -269,7 +290,7 @@ public class SimpleStunClient extends AbstractService {
 
     private void watch(long timeout) {
 
-      watched.addCallback(new FutureCallback<Boolean>() {
+      watched.callback(new FutureCallback<Boolean>() {
 
         @Override
         public void handleResult(Boolean result) {
