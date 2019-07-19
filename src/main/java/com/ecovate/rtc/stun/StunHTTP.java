@@ -1,11 +1,13 @@
 package com.ecovate.rtc.stun;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,12 +27,16 @@ import org.threadly.litesockets.protocols.http.shared.HTTPResponseCode;
 import org.threadly.litesockets.server.http.HTTPServer;
 import org.threadly.litesockets.server.http.HTTPServer.BodyFuture;
 import org.threadly.litesockets.server.http.HTTPServer.ResponseWriter;
+import org.threadly.litesockets.utils.IOUtils;
 import org.threadly.util.Clock;
 import org.threadly.util.ExceptionUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.exporter.common.TextFormat;
+import io.prometheus.client.hotspot.DefaultExports;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.Argument;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -42,7 +48,7 @@ public class StunHTTP {
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final HTTPResponse BAD_RESPONSE = new HTTPResponseBuilder().setHeader(HTTPConstants.HTTP_KEY_CONNECTION, "close").setResponseCode(HTTPResponseCode.BadRequest).build();
   private static final HTTPResponse SimpleResponse = new HTTPResponseBuilder().setHeader(HTTPConstants.HTTP_KEY_CONNECTION, "close").setResponseCode(HTTPResponseCode.OK).build();
-
+  
   private final PriorityScheduler PS = new PriorityScheduler(3);
   private final ThreadedSocketExecuter tse = new ThreadedSocketExecuter(PS, 100, 1);
   private final ConcurrentHashMap<InetSocketAddress, SimpleStunClient> clientList = new ConcurrentHashMap<>();
@@ -91,7 +97,7 @@ public class StunHTTP {
         .build(),
         "");
     this.httpServer = new HTTPServer(tse, listenAddress.getAddress().getHostAddress(), listenAddress.getPort());
-    this.httpServer.addHandler((x,y,z)->handler(x,y,z));
+    this.httpServer.setHandler((x,y,z)->handler(x,y,z));
     this.httpServer.start();
     checkDNSRunner.run();
     PS.scheduleAtFixedRate(statusRunner, 1000, 1000);
@@ -112,6 +118,8 @@ public class StunHTTP {
       rw.sendHTTPResponse(response.response);
       rw.writeBody(ByteBuffer.wrap(response.body.getBytes()));
       rw.done();
+    } else if(path.equals("/metrics")){
+      metricsResponse(httpRequest, rw, bodyListener);
     } else {
       rw.closeOnDone();
       rw.sendHTTPResponse(BAD_RESPONSE);
@@ -197,6 +205,37 @@ public class StunHTTP {
       }
     }
   }
+  
+  public static void metricsResponse(HTTPRequest httpRequest, ResponseWriter rw, BodyFuture bodyListener) {
+    log.info("{}: processing metrics");
+    rw.closeOnDone();
+    String metrics = "";
+    StringWriter writer = new StringWriter();
+    try {
+      TextFormat.write004(writer, CollectorRegistry.defaultRegistry.filteredMetricFamilySamples(Collections.emptySet()));
+      metrics = writer.toString();
+      HTTPResponse hr = new HTTPResponseBuilder()
+          .setResponseCode(HTTPResponseCode.OK)
+          .setHeader(HTTPConstants.HTTP_KEY_CONTENT_LENGTH, Integer.toString(metrics.length()))
+          .setHeader(HTTPConstants.HTTP_KEY_CONTENT_TYPE, "text/plain")
+          .setHeader(HTTPConstants.HTTP_KEY_CONNECTION, "close")
+          .build();
+      rw.sendHTTPResponse(hr);
+      rw.writeBody(ByteBuffer.wrap(metrics.getBytes()));
+      rw.done();
+    } catch (Exception e) {
+      log.error("Error parsing metrics!", e);
+      HTTPResponse hr = new HTTPResponseBuilder()
+          .setResponseCode(HTTPResponseCode.InternalServerError)
+          .setHeader(HTTPConstants.HTTP_KEY_CONTENT_LENGTH, "0")
+          .setHeader(HTTPConstants.HTTP_KEY_CONNECTION, "close")
+          .build();
+      rw.sendHTTPResponse(hr);
+      rw.done();
+    } finally {
+      IOUtils.closeQuietly(writer);
+    }
+  }
 
   private static class StunResponse {
     HTTPResponse response;
@@ -210,7 +249,7 @@ public class StunHTTP {
 
   public static void main(String[] args) throws IOException, InterruptedException {
     LoggingConfig.configureLogging();
-
+    DefaultExports.initialize();
     String env_servers = System.getenv("STUN_SERVERS");
     String env_listen = System.getenv("STUN_LISTEN_ADDRESS");
     Integer env_delay = null;

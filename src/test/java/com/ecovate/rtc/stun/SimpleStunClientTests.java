@@ -27,12 +27,11 @@ import org.threadly.litesockets.ThreadedSocketExecuter;
 import org.threadly.litesockets.UDPClient;
 import org.threadly.litesockets.UDPServer;
 import org.threadly.litesockets.buffers.MergedByteBuffers;
-import org.threadly.litesockets.utils.PortUtils;
-import org.threadly.test.concurrent.TestCondition;
-
 import org.threadly.litesockets.protocols.stun.StunMessageType;
 import org.threadly.litesockets.protocols.stun.StunPacket;
 import org.threadly.litesockets.protocols.stun.StunPacketBuilder;
+import org.threadly.litesockets.utils.PortUtils;
+import org.threadly.test.concurrent.TestCondition;
 
 public class SimpleStunClientTests {
 
